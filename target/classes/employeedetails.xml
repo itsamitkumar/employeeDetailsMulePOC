@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:ws="http://www.mulesoft.org/schema/mule/ws" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ws http://www.mulesoft.org/schema/mule/ws/current/mule-ws.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+    <http:listener-config name="HTTP_Listener_Configuration" host="localhost" port="9999"  doc:name="HTTP Listener Configuration"/>
+    <db:mysql-config name="MySQL_Configuration1" host="localhost" port="3306" user="root" password="root" database="employeedb" doc:name="MySQL Configuration"/>
+    <ws:consumer-config name="Web_Service_Consumer" service="EmployeeDetailsService" port="EmployeeDetailsPort" serviceAddress="http://din52003378:8888/empLocation" wsdlLocation="EmployeeDetailsService.wsdl" doc:name="Web Service Consumer"/>
+   
+   <spring:beans>
+   
+   <spring:bean id="identifyGratuityService" name="identifyGratuityService" class="employeedetails.IdentifyGratuityService"></spring:bean>
+   </spring:beans>
+    <flow name="employeedetailsFlow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/employee" doc:name="HTTP" allowedMethods="GET"/>
+        <set-variable variableName="empId" value="#[message.inboundProperties.'http.query.params'.empId]" doc:name="Variable"/>
+        <flow-ref name="DBLog_Flow" doc:name="DBLog_Flow"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/xml
+%namespace ns0 http://capg.com/
+---
+{
+	ns0#getEmployeeName: {
+		arg0: flowVars.empId as :number
+	}
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <logger message="Log:  #[flowVars.empId]" level="INFO" doc:name="Log payload object"/>
+        <ws:consumer config-ref="Web_Service_Consumer" operation="getEmployeeName" doc:name="Web Service Consumer"/>
+        <flow-ref name="checkForGS" doc:name="checkForGS"/>
+    </flow>
+    <sub-flow name="checkForGS">
+        <logger message="log xpath: #[xpath('/getEmployeeNameResponse/return/firstName').text]" level="INFO" doc:name="Logger"/>
+        <invoke name="Invoke" object-ref="identifyGratuityService" method="isEligibleForGS" methodArguments="#[xpath('/getEmployeeNameResponse/return/empDOJ').text]" methodArgumentTypes="java.lang.String"/>
+        <set-session-variable variableName="isEligibleForGS" value="#[payload:java.lang.String]" doc:name="Session Variable"/>
+        <logger message="sessionVars:  #[sessionVars.isEligibleForGS]" level="INFO" doc:name="Logger"/>
+        <flow-ref name="Scatter-Gather" doc:name="Scatter-Gather"/>
+    </sub-flow>
+    <flow name="Scatter-Gather">
+        <scatter-gather doc:name="Scatter-Gather">
+            <processor-chain>
+                <logger message="isEligibleForGS  check : #[sessionVars.isEligibleForGS == 'true']" level="INFO" doc:name="Logger1"/>
+                <choice doc:name="Choice">
+                    <when expression="#[sessionVars.isEligibleForGS ==true]">
+                        <logger message="applicable for gratuity" level="INFO" doc:name="Loggerdb"/>
+                        <db:select config-ref="MySQL_Configuration1" doc:name="ProvidentFund">
+                            <db:parameterized-query><![CDATA[SELECT `provident_fund`.`amount`,
+    `provident_fund`.`emp_id`
+FROM `employeedb`.`provident_fund`;]]></db:parameterized-query>
+                        </db:select>
+                    </when>
+                    <otherwise>
+                        <logger message="not applicable for gratuity" level="INFO" doc:name="Logger"/>
+                    </otherwise>
+                </choice>
+            </processor-chain>
+            <processor-chain>
+                <logger message="Hello Logger2" level="INFO" doc:name="Logger2"/>
+                <db:select config-ref="MySQL_Configuration1" doc:name="Address">
+                    <db:parameterized-query><![CDATA[SELECT `address`.`address_line`,
+    	`address`.`city`,
+   	 	`address`.`postal`,
+    	`address`.`emp_id`
+FROM `employeedb`.`address`;]]></db:parameterized-query>
+                </db:select>
+            </processor-chain>
+            <processor-chain>
+                <logger level="INFO" doc:name="Logger3"/>
+                <db:select config-ref="MySQL_Configuration1" doc:name="Gratuity">
+                    <db:parameterized-query><![CDATA[SELECT  `gratuity`.`amount`,
+    	`gratuity`.`emp_id`
+FROM `employeedb`.`gratuity`;]]></db:parameterized-query>
+                </db:select>
+            </processor-chain>
+            <processor-chain>
+                <logger level="INFO" doc:name="Logger4"/>
+                <db:select config-ref="MySQL_Configuration1" doc:name="Employee">
+                    <db:parameterized-query><![CDATA[SELECT  `employee`.`first_name`,
+    	`employee`.`last_name`,
+    	`employee`.`date_of_joining`
+FROM `employeedb`.`employee`;]]></db:parameterized-query>
+                </db:select>
+            </processor-chain>
+        </scatter-gather>
+        <combine-collections-transformer doc:name="Combine Collections"/>
+        <json:object-to-json-transformer doc:name="Object to JSON"/>
+    </flow>
+    <sub-flow name="DBLog_Flow">
+        <db:insert config-ref="MySQL_Configuration1" doc:name="DB Log">
+            <db:parameterized-query><![CDATA[INSERT INTO `employeedb`.`audit_log`(`request_attribute_log`,`request_type`,`request_code`) VALUES
+('GET','123','k1');]]></db:parameterized-query>
+        </db:insert>
+    </sub-flow>
+</mule>

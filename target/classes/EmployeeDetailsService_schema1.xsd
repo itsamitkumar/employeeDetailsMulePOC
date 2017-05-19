@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xs:schema version="1.0" targetNamespace="http://capg.com/" xmlns:tns="http://capg.com/" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <xs:element name="getEmployeeName" type="tns:getEmployeeName"/>
+
+  <xs:element name="getEmployeeNameResponse" type="tns:getEmployeeNameResponse"/>
+
+  <xs:complexType name="getEmployeeName">
+    <xs:sequence>
+      <xs:element name="arg0" type="xs:int"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="getEmployeeNameResponse">
+    <xs:sequence>
+      <xs:element name="return" type="tns:employee" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="employee">
+    <xs:sequence>
+      <xs:element name="empDOJ" type="xs:string" minOccurs="0"/>
+      <xs:element name="firstName" type="xs:string" minOccurs="0"/>
+      <xs:element name="lastName" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>
+
